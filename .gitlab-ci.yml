@@ -7,8 +7,8 @@ stages:
 variables:
   IMAGE_NAME: 'mini-projet-gitlab'
   IMAGE_TAG: 'v1'
-  DOCKER_USERNAME: 'mtt23'
-  DOCKER_PASSWORD:
+  DOCKER_USERNAME: 'mtt2023'
+  #DOCKER_PASSWORD:
   HOST_PORT: 80
   CONTAINER_PORT: 80
   SERVER_USERNAME: 'ubuntu'
@@ -37,7 +37,15 @@ docker-build:
     - docker load -i mini-projet-gitlab.tar
     - docker run --rm -dp $HOST_PORT:$CONTAINER_PORT --name $IMAGE_NAME $IMAGE_NAME:$IMAGE_TAG
     - sleep 5
-    - curl "http://docker:$CONTAINER_PORT" | grep -i 200
+    #- curl "http://docker:$CONTAINER_PORT" | grep -i 200
+    - |
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://docker:$CONTAINER_PORT)
+      echo "HTTP Status Code: $HTTP_CODE"
+      if [ "$HTTP_CODE" != "200" ]; then
+        echo "Test failed!"
+        exit 1
+      fi
+      echo "Test successful!"
 
 # Test
 Test:
@@ -51,7 +59,9 @@ Test:
 # Define release template
 .release_image: &release_image
   stage: release
-    - docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+  script:
+    - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin # A utiliser quand la variable est sur gitlab
+    #- docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD # A utiliser lorsque la variable est definie dans le code
     - docker load -i mini-projet-gitlab.tar
     - docker tag $IMAGE_NAME:$IMAGE_TAG $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
     - docker push $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
@@ -71,41 +81,42 @@ Release Image:
   before_script:
     - apk add --no-cache openssh
     - eval $(ssh-agent -s)
-    - echo "SSH_PRIVATE_KEY" | base64 -d > /tmp/id_rsa
+    - echo "$SSH_PRIVATE_KEY" | base64 -d > /tmp/id_rsa
     - chmod 600 /tmp/id_rsa
     - ssh-add /tmp/id_rsa
     - mkdir -p ~/.ssh
-    - echo -e "Host *\n\tStricHostKeyChecking no\n\n" > ~/.ssh/config
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
   script:
-    - ssh -o StricHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker pull $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG"
-    - ssh -o StricHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker run --rm -dp $HOST_PORT:$CONTAINER_PORT --name $IMAGE_NAME $IMAGE_NAME:$IMAGE_TAG"
+    - ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker pull $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG"
+    - ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker run --rm -dp $HOST_PORT:$CONTAINER_PORT --name $IMAGE_NAME $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG"
     
 # Deploy in Review
 Deploy Review:
   stage: deploy
   variables:
-    SERVER_IP: ''
+    SERVER_IP: '16.192.164.108'
   image: alpine
   <<: *deploy_app
-  environnement:
+  environment:
     name: Review
 
 # Deploy in Staging
 Deploy Staging:
   stage: deploy
   variables:
-    SERVER_IP: ''
+    SERVER_IP: '16.16.122.215'
   image: alpine
   <<: *deploy_app
-  environnement:
+  environment:
     name: Staging
 
 # Deploy in Production
 Deploy Production:
   stage: deploy
   variables:
-    SERVER_IP: ''
+    SERVER_IP: '13.63.20.17'
   image: alpine
   <<: *deploy_app
-  environnement:
+  environment:
     name: Production
+
